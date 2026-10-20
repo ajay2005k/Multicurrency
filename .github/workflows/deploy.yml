@@ -109,6 +109,10 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Show non-secret OIDC identity metadata
+        env:
+          TARGET_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN || 'arn:aws:iam::014679146311:role/sentinel-payments-github-deployer' }}
+        run: python3 scripts/oidc_identity.py
       - name: Build deployable application
         run: |
           python -m venv .venv
@@ -120,6 +124,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: sentinel-${{ github.run_id }}
           role-duration-seconds: 3600
+          retry-max-attempts: 2
       - name: Deploy and verify live website
         env:
           SENTINEL_WORKSPACE_ACCESS_KEY: ${{ secrets.SENTINEL_WORKSPACE_ACCESS_KEY || secrets.SECRET_KEY_1 }}
