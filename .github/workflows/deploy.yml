@@ -151,6 +151,7 @@ jobs:
               summary.write('### Sentinel deployment verified\n\n')
               summary.write('Website: ' + output['SiteUrl'] + '\n\n')
               summary.write('Region: ' + output['region'] + '\n')
+          print('::notice title=Sentinel live website::' + output['SiteUrl'])
           PY
       - name: Save non-secret deployment outputs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
