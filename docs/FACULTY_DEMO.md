@@ -35,7 +35,8 @@ This is the deployment design. Claim these AWS services are working only after t
 | AWS IAM | Grants Lambda permission to access its own table and logs | Permissions are scoped to the required resources. |
 | Amazon CloudWatch | Stores backend execution logs with 14-day retention | Use it to diagnose backend failures. |
 | AWS CloudFormation | Creates and updates infrastructure from `infra/hosting.yaml` | The setup is repeatable rather than a list of manual console clicks. |
-| AWS CloudShell | Runs the deployment using your logged-in AWS session | It is a deployment terminal, not the website's runtime host. |
+| AWS CloudShell | Performs one-time AWS role setup, or the initial manual deployment | It is a setup terminal, not the website's runtime host. |
+| GitHub Actions + AWS OIDC | Tests and deploys changes from main using short-lived AWS access | After activation, updates publish without uploading ZIP files or storing AWS access keys in GitHub. |
 | ExchangeRate API | Optional live rates used for conversion | Only claim live rates when the UI says **LIVE RATES**. Otherwise explain the fixed reference dataset. |
 | AWS Secrets Manager | Optional storage for the live FX provider key | Used only if a live FX secret ARN is supplied at deployment. |
 
@@ -124,3 +125,9 @@ SQLite for local development; DynamoDB for the CloudShell deployment.
 
 **Where is the machine-learning model?**
 There is no trained model in the current implementation. The rules are deliberately visible on the Risk insights page.
+
+## Explaining automatic updates
+
+“Source code is stored in GitHub. Pull requests run application tests. Changes published to main also trigger deployment after tests pass. GitHub uses OIDC to obtain short-lived AWS access, CloudFormation updates the existing application, and CloudFront serves the refreshed frontend at the same URL. An automated public smoke test checks the payment workflow after deployment.”
+
+Only claim this is active after the one-time OIDC setup, repository variables and workspace secret have been configured, and the **Publish to AWS** job has passed. Local edits do not publish until committed and pushed.
