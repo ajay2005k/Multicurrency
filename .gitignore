@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.db
+.env
+node_modules/
+dist/
+.aws-sam/
+
+.local/
+.build/
+.deploy/
+deployment-output.json
+github-variables.json
+
+*.tsbuildinfo

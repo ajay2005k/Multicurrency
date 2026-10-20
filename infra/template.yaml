@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Sentinel payment risk API and storage
+Parameters:
+  FrontendOrigin:
+    Type: String
+    AllowedPattern: 'https://[^/ ]+'
+  AppApiKey:
+    Type: String
+    NoEcho: true
+    MinLength: 24
+Resources:
+  PaymentsApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: [!Ref FrontendOrigin]
+        AllowHeaders: [Content-Type, Idempotency-Key, X-API-Key]
+        AllowMethods: [GET, POST, OPTIONS]
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+  Transactions:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+  PaymentsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/
+      Handler: app.handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          STORAGE_BACKEND: dynamodb
+          TRANSACTIONS_TABLE: !Ref Transactions
+          FX_PROVIDER: demo
+          APP_API_KEY: !Ref AppApiKey
+          CORS_ORIGINS: !Ref FrontendOrigin
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: [dynamodb:Scan, dynamodb:GetItem, dynamodb:PutItem]
+              Resource: !GetAtt Transactions.Arn
+      Events:
+        Root:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PaymentsApi
+            Path: /{proxy+}
+            Method: ANY
+  FunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${PaymentsFunction}'
+      RetentionInDays: 14
+Outputs:
+  ApiUrl:
+    Value: !Sub 'https://${PaymentsApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
+  TableName:
+    Value: !Ref Transactions

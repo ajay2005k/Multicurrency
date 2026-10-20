@@ -1,0 +1,208 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: GitHub OIDC deployment roles for Sentinel; no long-lived AWS access keys
+Parameters:
+  Repository:
+    Type: String
+    Default: ajay2005k/Multicurrency
+    AllowedPattern: '[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+'
+  ApplicationStack:
+    Type: String
+    Default: sentinel-payments
+    AllowedPattern: '[a-z][a-z0-9-]{2,23}'
+  CreateOidcProvider:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'true'
+  FxSecretArn:
+    Type: String
+    Default: ''
+Conditions:
+  NeedsProvider: !Equals [!Ref CreateOidcProvider, 'true']
+  HasFxSecret: !Not [!Equals [!Ref FxSecretArn, '']]
+Resources:
+  GithubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Condition: NeedsProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+  RuntimeBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${ApplicationStack}-runtime-boundary'
+      Description: Maximum permissions for the application Lambda role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: [dynamodb:Scan, dynamodb:GetItem, dynamodb:PutItem]
+            Resource: !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ApplicationStack}-Transactions-*'
+          - Effect: Allow
+            Action: [logs:CreateLogStream, logs:PutLogEvents]
+            Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/sentinel/${ApplicationStack}/payments:*'
+          - !If
+            - HasFxSecret
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Ref FxSecretArn
+            - !Ref AWS::NoValue
+  CloudFormationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ApplicationStack}-cloudformation'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ApplicationInfrastructure
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ApplicationStorage
+                Effect: Allow
+                Action: s3:*
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ApplicationStack}-frontendbucket-*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ApplicationStack}-frontendbucket-*/*'
+              - Sid: ReadLambdaArtifacts
+                Effect: Allow
+                Action: [s3:GetObject, s3:GetObjectVersion, s3:GetBucketLocation]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ApplicationStack}-${AWS::AccountId}-${AWS::Region}-artifacts'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ApplicationStack}-${AWS::AccountId}-${AWS::Region}-artifacts/*'
+              - Sid: ApplicationDatabase
+                Effect: Allow
+                Action: dynamodb:*
+                Resource: !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ApplicationStack}-Transactions-*'
+              - Sid: ApplicationFunction
+                Effect: Allow
+                Action: lambda:*
+                Resource: !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${ApplicationStack}-PaymentsFunction-*'
+              - Sid: ApplicationLogs
+                Effect: Allow
+                Action: logs:*
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/sentinel/${ApplicationStack}/payments'
+                  - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/sentinel/${ApplicationStack}/payments:*'
+              - Sid: DiscoverLogGroup
+                Effect: Allow
+                Action: logs:DescribeLogGroups
+                Resource: '*'
+              - Sid: RegionalApiControlPlane
+                Effect: Allow
+                Action: [apigateway:GET, apigateway:POST, apigateway:PUT, apigateway:PATCH, apigateway:DELETE]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis'
+                  - !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis/*'
+              - Sid: CloudFrontControlPlane
+                Effect: Allow
+                Action:
+                  - cloudfront:CreateDistribution
+                  - cloudfront:UpdateDistribution
+                  - cloudfront:DeleteDistribution
+                  - cloudfront:GetDistribution
+                  - cloudfront:GetDistributionConfig
+                  - cloudfront:TagResource
+                  - cloudfront:UntagResource
+                  - cloudfront:ListTagsForResource
+                  - cloudfront:CreateOriginAccessControl
+                  - cloudfront:GetOriginAccessControl
+                  - cloudfront:GetOriginAccessControlConfig
+                  - cloudfront:UpdateOriginAccessControl
+                  - cloudfront:DeleteOriginAccessControl
+                Resource: '*'
+              - Sid: CreateBoundedApplicationRole
+                Effect: Allow
+                Action: [iam:CreateRole, iam:PutRolePermissionsBoundary]
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ApplicationStack}-ExecutionRole-*'
+                Condition:
+                  ArnEquals:
+                    iam:PermissionsBoundary: !Ref RuntimeBoundary
+              - Sid: ManageApplicationRole
+                Effect: Allow
+                Action: [iam:GetRole, iam:DeleteRole, iam:PutRolePolicy, iam:DeleteRolePolicy, iam:GetRolePolicy, iam:ListRolePolicies, iam:ListAttachedRolePolicies, iam:TagRole, iam:UntagRole]
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ApplicationStack}-ExecutionRole-*'
+              - Sid: PassApplicationRoleToLambda
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ApplicationStack}-ExecutionRole-*'
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: lambda.amazonaws.com
+  GithubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ApplicationStack}-github-deployer'
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - NeedsProvider
+                - !Ref GithubOidcProvider
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${Repository}:ref:refs/heads/main'
+      Policies:
+        - PolicyName: PublishApplication
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ValidateTemplate
+                Effect: Allow
+                Action: cloudformation:ValidateTemplate
+                Resource: '*'
+              - Sid: InspectApplicationStack
+                Effect: Allow
+                Action: [cloudformation:DescribeStacks, cloudformation:DescribeStackEvents]
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ApplicationStack}/*'
+              - Sid: DeployOnlyApplicationStack
+                Effect: Allow
+                Action: [cloudformation:CreateStack, cloudformation:UpdateStack]
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ApplicationStack}/*'
+                Condition:
+                  ArnEquals:
+                    cloudformation:RoleArn: !GetAtt CloudFormationRole.Arn
+              - Sid: PassOnlyExecutionRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt CloudFormationRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: cloudformation.amazonaws.com
+              - Sid: ArtifactBucket
+                Effect: Allow
+                Action: [s3:CreateBucket, s3:ListBucket, s3:GetBucketLocation, s3:PutBucketPublicAccessBlock, s3:PutEncryptionConfiguration]
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ApplicationStack}-${AWS::AccountId}-${AWS::Region}-artifacts'
+              - Sid: FrontendBucketMetadata
+                Effect: Allow
+                Action: [s3:ListBucket, s3:GetBucketLocation]
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ApplicationStack}-frontendbucket-*'
+              - Sid: UploadArtifactsAndFrontend
+                Effect: Allow
+                Action: [s3:PutObject, s3:GetObject, s3:AbortMultipartUpload]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ApplicationStack}-${AWS::AccountId}-${AWS::Region}-artifacts/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ApplicationStack}-frontendbucket-*/*'
+              - Sid: RefreshWebsiteCache
+                Effect: Allow
+                Action: cloudfront:CreateInvalidation
+                Resource: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/*'
+Outputs:
+  DeployRoleArn:
+    Value: !GetAtt GithubDeployRole.Arn
+  CloudFormationRoleArn:
+    Value: !GetAtt CloudFormationRole.Arn
+  RuntimeBoundaryArn:
+    Value: !Ref RuntimeBoundary
