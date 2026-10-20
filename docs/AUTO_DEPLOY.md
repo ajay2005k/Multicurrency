@@ -54,7 +54,7 @@ Under **Variables**, add the printed values only when overriding the configured 
 | `FX_PROVIDER` | `demo`, or `exchangerate` when explicitly configured |
 | `FX_SECRET_ARN` | Empty for reference rates; exact Secrets Manager ARN for live FX |
 
-Under **Secrets**, create **`SENTINEL_WORKSPACE_ACCESS_KEY`**, with at least 24 characters. This is the application's workspace access key, not an AWS secret access key. Use the same key chosen during an earlier CloudShell application deployment to preserve access. Enter it directly into GitHub's secure secret editor; do not share it in chat or commit it.
+Under **Secrets**, create **`SENTINEL_WORKSPACE_ACCESS_KEY`**, with at least 24 characters. The existing repository secret **`SECRET_KEY_1`** (entered as `secret_key_1`) is also accepted; the canonical name takes precedence if both exist. This is the application's workspace access key, not an AWS secret access key. Use the same key chosen during an earlier CloudShell application deployment to preserve access. Enter it directly into GitHub's secure secret editor; do not share it in chat or commit it.
 
 No `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, or `AWS_SESSION_TOKEN` GitHub secrets are needed.
 
