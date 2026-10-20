@@ -4,7 +4,7 @@ After the one-time AWS/GitHub setup, merging or pushing a tested change to `main
 
 ## Pipeline
 
-`.github/workflows/deploy.yml` runs backend/deployment tests, a production frontend build, and browser workflow checks for pull requests and pushes to `main`. Only trusted `main` runs can deploy. The deployment job is skipped until its AWS role variable is configured, so the initial pull request can be tested before AWS setup.
+`.github/workflows/deploy.yml` runs backend/deployment tests, a production frontend build, and browser workflow checks for pull requests and pushes to `main`. Only trusted `main` runs can deploy. The workflow defaults target the confirmed Mumbai AWS setup in account `014679146311`. Repository variables can override those non-secret defaults for another account or stack. Publishing requires the workspace access key secret. Set `AWS_AUTO_DEPLOY=disabled` as a repository variable to pause publishing while keeping tests active.
 
 After checks pass, GitHub builds the Lambda package and frontend, exchanges its OIDC identity for a short-lived AWS session, updates the CloudFormation application stack, uploads frontend assets, invalidates CloudFront's cache, and checks the public payment workflow. The Actions run summary contains the website URL. Deployments run one at a time and are not canceled halfway through by a later push.
 
@@ -36,11 +36,13 @@ The deployment role does not have AdministratorAccess or permission to delete th
 
 ## Configure GitHub once
 
+For the confirmed account `014679146311`, the role ARNs, Mumbai region, application stack name, and reference FX mode are already workflow defaults. **You only need to add the workspace access key secret, then run the workflow.** Role/region/stack variables below are optional overrides for this setup.
+
 The bootstrap prints a JSON object containing **non-secret repository variables** and writes `github-variables.json`. These are role ARNs and settings, not credentials. You may share this JSON in the Codex task to have the repository variables configured, if GitHub write access is available.
 
 In GitHub, open **Settings → Secrets and variables → Actions**.
 
-Under **Variables**, add the printed values:
+Under **Variables**, add the printed values only when overriding the configured defaults or targeting a different account:
 
 | Variable | Purpose |
 |---|---|
@@ -66,7 +68,7 @@ Go to **Actions → Test and deploy Sentinel → Run workflow**, choose **main**
 
 The first automatic deployment may create the application if it does not exist yet, or update the existing CloudShell-created stack. It adds the bounded Lambda role policy without replacing the database or CloudFront distribution. It creates three synthetic launch-verification payments each time it succeeds. Application AWS resources are billable; existing cleanup instructions still apply.
 
-A green test job alone does not mean the website was published. The **Publish to AWS** job must also pass; it is intentionally skipped while the role variable is absent. The public URL appears in the successful deployment's run summary.
+A green test job alone does not mean the website was published. The **Publish to AWS** job must also pass; it is skipped when `AWS_AUTO_DEPLOY=disabled`, and it cannot publish until the workspace access key secret is configured. The public URL appears in the successful deployment's run summary.
 
 If a deployment fails, inspect the Actions run and CloudFormation Events. Do not delete retained data or change checks to make it pass. Correct the underlying configuration, rerun, and verify the live site.
 
@@ -77,4 +79,4 @@ If a deployment fails, inspect the Actions run and CloudFormation Events. Do not
 3. Merge it to main after checks pass.
 4. Watch the Actions deployment; refresh the same website URL when it succeeds.
 
-To pause automatic publication, remove `AWS_DEPLOY_ROLE_ARN` from repository variables. Tests continue running and deployment is skipped. Deleting the bootstrap stack does not delete the application stack, and deleting the application stack does not remove the GitHub bootstrap roles. The bootstrap stack has termination protection; disable it explicitly before removing those roles. A provider created by this stack is retained on deletion to protect other repositories that may use it. Check whether any other repository uses the shared OIDC provider before deleting that retained provider separately.
+To pause automatic publication, set `AWS_AUTO_DEPLOY` to `disabled` in repository variables. Tests continue running and deployment is skipped. Deleting the bootstrap stack does not delete the application stack, and deleting the application stack does not remove the GitHub bootstrap roles. The bootstrap stack has termination protection; disable it explicitly before removing those roles. A provider created by this stack is retained on deletion to protect other repositories that may use it. Check whether any other repository uses the shared OIDC provider before deleting that retained provider separately.

@@ -69,7 +69,7 @@ jobs:
   deploy:
     name: Publish to AWS
     needs: verify
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.AWS_DEPLOY_ROLE_ARN != ''
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.AWS_AUTO_DEPLOY != 'disabled'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     concurrency:
@@ -87,8 +87,8 @@ jobs:
           persist-credentials: false
       - name: Check deployment configuration
         env:
-          EXECUTION_ROLE: ${{ vars.AWS_CLOUDFORMATION_ROLE_ARN }}
-          RUNTIME_BOUNDARY: ${{ vars.AWS_RUNTIME_BOUNDARY_ARN }}
+          EXECUTION_ROLE: ${{ vars.AWS_CLOUDFORMATION_ROLE_ARN || 'arn:aws:iam::014679146311:role/sentinel-payments-cloudformation' }}
+          RUNTIME_BOUNDARY: ${{ vars.AWS_RUNTIME_BOUNDARY_ARN || 'arn:aws:iam::014679146311:policy/sentinel-payments-runtime-boundary' }}
           WORKSPACE_KEY: ${{ secrets.SENTINEL_WORKSPACE_ACCESS_KEY }}
         run: |
           test -n "$EXECUTION_ROLE" || { echo 'Missing AWS_CLOUDFORMATION_ROLE_ARN repository variable'; exit 1; }
@@ -109,15 +109,15 @@ jobs:
       - name: Authenticate to AWS using GitHub OIDC
         uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN || 'arn:aws:iam::014679146311:role/sentinel-payments-github-deployer' }}
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: sentinel-${{ github.run_id }}
           role-duration-seconds: 3600
       - name: Deploy and verify live website
         env:
           SENTINEL_WORKSPACE_ACCESS_KEY: ${{ secrets.SENTINEL_WORKSPACE_ACCESS_KEY }}
-          EXECUTION_ROLE: ${{ vars.AWS_CLOUDFORMATION_ROLE_ARN }}
-          RUNTIME_BOUNDARY: ${{ vars.AWS_RUNTIME_BOUNDARY_ARN }}
+          EXECUTION_ROLE: ${{ vars.AWS_CLOUDFORMATION_ROLE_ARN || 'arn:aws:iam::014679146311:role/sentinel-payments-cloudformation' }}
+          RUNTIME_BOUNDARY: ${{ vars.AWS_RUNTIME_BOUNDARY_ARN || 'arn:aws:iam::014679146311:policy/sentinel-payments-runtime-boundary' }}
           FX_PROVIDER: ${{ vars.FX_PROVIDER || 'demo' }}
           FX_SECRET_ARN: ${{ vars.FX_SECRET_ARN }}
         run: |
