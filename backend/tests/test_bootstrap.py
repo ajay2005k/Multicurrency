@@ -34,7 +34,23 @@ def test_existing_provider_ownership_survives_repeat_run(monkeypatch, tmp_path):
     monkeypatch.setattr(module.shutil, 'which', lambda name: '/usr/bin/aws')
     monkeypatch.setattr(module, 'wait_stack', lambda *a: {'DeployRoleArn': 'deploy', 'CloudFormationRoleArn': 'cfn', 'RuntimeBoundaryArn': 'boundary'})
     monkeypatch.chdir(tmp_path)
-    module.bootstrap(SimpleNamespace(region='ap-south-1', stack='sentinel-payments', repository='ajay2005k/Multicurrency', fx_secret_arn=''))
+    module.bootstrap(SimpleNamespace(region='ap-south-1', stack='sentinel-payments', repository='ajay2005k/Multicurrency', github_subject='repo:ajay2005k@91924588/Multicurrency@1427070663:ref:refs/heads/main', fx_secret_arn=''))
     params = {item['ParameterKey']: item['ParameterValue'] for item in calls['Parameters']}
     assert params['CreateOidcProvider'] == 'true', 'Changing this to false would delete a shared provider owned by the stack'
     assert (tmp_path / 'github-variables.json').is_file()
+
+
+def test_subject_accepts_observed_immutable_ids():
+    module.validate_subject('ajay2005k/Multicurrency', 'repo:ajay2005k@91924588/Multicurrency@1427070663:ref:refs/heads/main')
+
+
+def test_subject_rejects_other_repositories_branches_and_wildcards():
+    import pytest
+    for subject in [
+        'repo:other@91924588/Multicurrency@1427070663:ref:refs/heads/main',
+        'repo:ajay2005k@91924588/other@1427070663:ref:refs/heads/main',
+        'repo:ajay2005k@91924588/Multicurrency@1427070663:ref:refs/heads/dev',
+        'repo:ajay2005k/*:ref:refs/heads/main',
+    ]:
+        with pytest.raises(RuntimeError):
+            module.validate_subject('ajay2005k/Multicurrency', subject)

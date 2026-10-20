@@ -9,6 +9,12 @@ import sys
 from deploy import AwsError, AwsSession, wait_stack
 
 
+def validate_subject(repository, subject):
+    match = re.fullmatch(r'repo:([A-Za-z0-9_.-]+)(?:@[0-9]+)?/([A-Za-z0-9_.-]+)(?:@[0-9]+)?:ref:refs/heads/main', subject)
+    if not match or '/'.join(match.groups()) != repository:
+        raise RuntimeError('The GitHub OIDC subject must identify this exact repository and refs/heads/main. Wildcards and other branches are not allowed.')
+
+
 def bootstrap(args):
     if not shutil.which('aws'):
         raise RuntimeError('Run this command in AWS CloudShell, using your existing AWS login.')
@@ -16,6 +22,7 @@ def bootstrap(args):
         raise RuntimeError('Repository must have the form owner/repository.')
     if not re.fullmatch(r'[a-z][a-z0-9-]{2,23}', args.stack):
         raise RuntimeError('Application stack name must contain 3–24 lowercase letters, numbers, or hyphens.')
+    validate_subject(args.repository, args.github_subject)
     session = AwsSession(args.region)
     identity = session.client('sts').get_caller_identity()
     partition = identity['Arn'].split(':')[1]
@@ -47,12 +54,14 @@ def bootstrap(args):
     template = Path(__file__).resolve().parents[1] / 'infra/github-oidc.yaml'
     parameters = [
         {'ParameterKey': 'Repository', 'ParameterValue': args.repository},
+        {'ParameterKey': 'GithubSubject', 'ParameterValue': args.github_subject},
         {'ParameterKey': 'ApplicationStack', 'ParameterValue': args.stack},
         {'ParameterKey': 'CreateOidcProvider', 'ParameterValue': str(create_provider).lower()},
         {'ParameterKey': 'FxSecretArn', 'ParameterValue': args.fx_secret_arn},
     ]
     print('Setting up GitHub OIDC, a deployment role, an infrastructure role, and a bounded Lambda runtime policy.', flush=True)
     print('Only main-branch workflows in ' + args.repository + ' will be trusted. No AWS keys are created.', flush=True)
+    print('Exact trusted GitHub subject: ' + args.github_subject, flush=True)
     common = {'StackName': name, 'TemplateBody': template.read_text(), 'Parameters': parameters, 'Capabilities': ['CAPABILITY_NAMED_IAM']}
     cfn.validate_template(TemplateBody=common['TemplateBody'])
     if existing:
@@ -85,6 +94,7 @@ def bootstrap(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repository', default='ajay2005k/Multicurrency')
+    parser.add_argument('--github-subject', default='repo:ajay2005k@91924588/Multicurrency@1427070663:ref:refs/heads/main', help='Exact main-branch sub claim from the workflow OIDC diagnostic')
     parser.add_argument('--region', default='ap-south-1')
     parser.add_argument('--stack', default='sentinel-payments')
     parser.add_argument('--fx-secret-arn', default='')

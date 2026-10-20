@@ -8,7 +8,7 @@ After the one-time AWS/GitHub setup, merging or pushing a tested change to `main
 
 After checks pass, GitHub builds the Lambda package and frontend, exchanges its OIDC identity for a short-lived AWS session, updates the CloudFormation application stack, uploads frontend assets, invalidates CloudFront's cache, and checks the public payment workflow. The Actions run summary contains the website URL. Deployments run one at a time and are not canceled halfway through by a later push.
 
-The AWS trust policy permits exactly `repo:ajay2005k/Multicurrency:ref:refs/heads/main` with audience `sts.amazonaws.com`. Pull requests and other repositories/branches cannot assume this role. Workflow dependencies are pinned to verified Git commit hashes. No workflow uses `pull_request_target`, and only the deployment job has `id-token: write`.
+The AWS trust policy permits exactly `repo:ajay2005k@91924588/Multicurrency@1427070663:ref:refs/heads/main` with audience `sts.amazonaws.com`. This exact subject includes the immutable owner and repository IDs observed in GitHub’s token. Pull requests and other repositories/branches cannot assume this role. If another repository uses a different subject format, use the allowlisted metadata from `Show non-secret OIDC identity metadata` in Actions and pass it via `--github-subject` when bootstrapping; never use wildcards to resolve a mismatch. Workflow dependencies are pinned to verified Git commit hashes. No workflow uses `pull_request_target`, and only the deployment job has `id-token: write`.
 
 ## One-time setup in AWS CloudShell
 

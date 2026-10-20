@@ -5,6 +5,11 @@ Parameters:
     Type: String
     Default: ajay2005k/Multicurrency
     AllowedPattern: '[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+'
+  GithubSubject:
+    Type: String
+    Default: 'repo:ajay2005k@91924588/Multicurrency@1427070663:ref:refs/heads/main'
+    AllowedPattern: 'repo:[A-Za-z0-9_.@-]+/[A-Za-z0-9_.@-]+:ref:refs/heads/main'
+    Description: Exact GitHub OIDC subject, including immutable IDs when present
   ApplicationStack:
     Type: String
     Default: sentinel-payments
@@ -153,7 +158,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                token.actions.githubusercontent.com:sub: !Sub 'repo:${Repository}:ref:refs/heads/main'
+                token.actions.githubusercontent.com:sub: !Ref GithubSubject
       Policies:
         - PolicyName: PublishApplication
           PolicyDocument:
